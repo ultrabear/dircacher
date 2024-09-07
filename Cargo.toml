@@ -1,0 +1,16 @@
+[package]
+name = "dircacher"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+overflow-checks = true
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+rayon = "1.10.0"
+walkdir = "2.5.0"
