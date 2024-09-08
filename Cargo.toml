@@ -12,5 +12,5 @@ overflow-checks = true
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
-rayon = "1.10.0"
-walkdir = "2.5.0"
+tokio = { version = "1.40.0", features = ["full"] }
+tokio-util = { version = "0.7.12", features = ["full"] }
