@@ -6,7 +6,7 @@ arch=("x86_64")
 license=("GPL-3.0-or-later")
 source=("dircacher" "dircacher.service")
 backup=("etc/systemd/system/dircacher.service")
-sha512sums=("SKIP")
+sha512sums=("SKIP" "SKIP")
 
 
 package() {
