@@ -62,7 +62,7 @@ async fn cache_dir_async(
 }
 
 #[derive(clap::Parser)]
-#[clap(author = "ultrabear <bearodark@gmail.com>")]
+#[clap(author = "ultrabear <bearodark@gmail.com>", version)]
 /// A simple cli to load the metadata of given mountpoints into ram by reading them
 struct Args {
     /// directories to traverse into
