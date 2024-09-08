@@ -1,14 +1,19 @@
 pkgname="dircacher-bin"
 pkgver="0.2.1"
-pkgrel="1"
+pkgrel="2"
 pkgdesc="A basic recursive inode caching tool"
 arch=("x86_64")
 license=("GPL-3.0-or-later")
-source=("dircacher")
+source=("dircacher" "dircacher.service")
+backup=("etc/systemd/system/dircacher.service")
 sha512sums=("SKIP")
+
 
 package() {
   mkdir -p "${pkgdir}/usr/bin"
   cp "${srcdir}/dircacher" "${pkgdir}/usr/bin/dircacher"
   chmod +x "${pkgdir}/usr/bin/dircacher"
+
+  mkdir -p "${pkgdir}/etc/systemd/system/"
+  cp "${srcdir}/dircacher.service" "${pkgdir}/etc/systemd/system/dircacher.service"
 }
