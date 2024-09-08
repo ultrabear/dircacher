@@ -1,5 +1,5 @@
 pkgname="dircacher-bin"
-pkgver="0.2.1"
+pkgver="0.3.0"
 pkgrel="2"
 pkgdesc="A basic recursive inode caching tool"
 arch=("x86_64")

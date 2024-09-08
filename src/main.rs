@@ -1,13 +1,19 @@
+use core::fmt;
 use std::{
     fs::Metadata,
     future::Future,
     io::{self, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
+    sync::{
+        atomic::{self, AtomicU64},
+        Arc,
+    },
     time::Duration,
 };
 
 use clap::Parser;
+use crossbeam_utils::CachePadded;
 use tokio::{sync::mpsc, task, time::sleep};
 use tokio_util::task::TaskTracker;
 
@@ -20,16 +26,92 @@ impl TaskSpawner {
         F::Output: Send + 'static,
     {
         while self.1.len() > self.0 {
-            sleep(Duration::from_millis(1)).await;
+            sleep(Duration::from_micros(500)).await;
         }
 
         self.1.spawn(task)
     }
 }
 
+struct StatsTrackers {
+    file: CachePadded<AtomicU64>,
+    sym: CachePadded<AtomicU64>,
+    dir: CachePadded<AtomicU64>,
+}
+
+impl StatsTrackers {
+    const fn new() -> Self {
+        Self {
+            file: CachePadded::new(AtomicU64::new(0)),
+            sym: CachePadded::new(AtomicU64::new(0)),
+            dir: CachePadded::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn inc_file(&self) {
+        self.file.fetch_add(1, atomic::Ordering::Relaxed);
+    }
+
+    fn inc_sym(&self) {
+        self.sym.fetch_add(1, atomic::Ordering::Relaxed);
+    }
+
+    fn inc_dir(&self) {
+        self.dir.fetch_add(1, atomic::Ordering::Relaxed);
+    }
+
+    /// splits the atom
+    /// accumulates file, sym, dir counts
+    fn accum(&self, values: DisplayTrackers) -> DisplayTrackers {
+        DisplayTrackers {
+            file: values.file + self.file.load(atomic::Ordering::Relaxed),
+            sym: values.sym + self.sym.load(atomic::Ordering::Relaxed),
+            dir: values.dir + self.dir.load(atomic::Ordering::Relaxed),
+        }
+    }
+}
+
+struct DisplayTrackers {
+    file: u64,
+    sym: u64,
+    dir: u64,
+}
+
+impl DisplayTrackers {
+    fn new() -> Self {
+        Self {
+            file: 0,
+            sym: 0,
+            dir: 0,
+        }
+    }
+}
+
+impl fmt::Display for DisplayTrackers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} file", self.file)?;
+        if self.file != 1 {
+            write!(f, "s")?;
+        }
+
+        write!(f, ", {} symlink", self.sym)?;
+        if self.sym != 1 {
+            write!(f, "s")?;
+        }
+
+        write!(f, ", and {} dir", self.dir)?;
+        if self.dir != 1 {
+            write!(f, "s")?;
+        }
+
+        Ok(())
+    }
+}
+
 async fn cache_dir_async(
     dir: PathBuf,
     meta: Metadata,
+    trackers: Arc<StatsTrackers>,
     spawner: mpsc::UnboundedSender<(PathBuf, Metadata)>,
     errors: mpsc::Sender<(PathBuf, io::Error)>,
 ) {
@@ -52,8 +134,15 @@ async fn cache_dir_async(
                     }
                 };
 
-                if e_meta.is_dir() && e_meta.dev() == meta.dev() {
-                    spawner.send((entry.path(), e_meta)).unwrap();
+                if e_meta.is_symlink() {
+                    trackers.inc_sym();
+                } else if e_meta.is_file() {
+                    trackers.inc_file();
+                } else if e_meta.is_dir() {
+                    trackers.inc_dir();
+                    if e_meta.dev() == meta.dev() {
+                        spawner.send((entry.path(), e_meta)).unwrap();
+                    }
                 }
             }
         }
@@ -76,6 +165,8 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
+    let start = std::time::Instant::now();
+
     let parse = Args::parse();
 
     if let Some(wait) = parse.wait {
@@ -92,11 +183,23 @@ async fn main() {
 
     let tracker = mtracker.clone();
 
-    tokio::spawn(async move {
+    let spawner = tokio::spawn(async move {
+        const TRACKERS: usize = 12;
+
+        let statspool: [Arc<StatsTrackers>; TRACKERS] =
+            core::array::from_fn(|_| Arc::new(StatsTrackers::new()));
+        let mut tracker_i = 0;
+
         loop {
             if let Ok((dir, meta)) = spawn_rx.try_recv() {
                 tracker
-                    .spawn(cache_dir_async(dir, meta, spawn_tx.clone(), err_tx.clone()))
+                    .spawn(cache_dir_async(
+                        dir,
+                        meta,
+                        statspool[tracker_i].clone(),
+                        spawn_tx.clone(),
+                        err_tx.clone(),
+                    ))
                     .await;
             // the spawner we hold is the only one left
             } else if spawn_rx.sender_strong_count() == 1 {
@@ -105,7 +208,13 @@ async fn main() {
                 if let Ok((dir, meta)) = spawn_rx.try_recv() {
                     // there was something, keep going
                     tracker
-                        .spawn(cache_dir_async(dir, meta, spawn_tx.clone(), err_tx.clone()))
+                        .spawn(cache_dir_async(
+                            dir,
+                            meta,
+                            statspool[tracker_i].clone(),
+                            spawn_tx.clone(),
+                            err_tx.clone(),
+                        ))
                         .await;
                 } else {
                     // there was nothing
@@ -115,12 +224,17 @@ async fn main() {
                 // microsleep until the next recv is available
                 sleep(Duration::from_micros(500)).await;
             }
+
+            tracker_i += 1;
+            tracker_i %= TRACKERS;
         }
 
         tracker.1.close();
+
+        statspool
     });
 
-    tokio::spawn(async move {
+    let errs = tokio::spawn(async move {
         while let Some((p, err)) = err_rx.recv().await {
             _ = writeln!(std::io::stderr().lock(), "{}: {err}", p.display());
         }
@@ -141,4 +255,16 @@ async fn main() {
     drop((initial_err, initial_spawn));
 
     mtracker.1.wait().await;
+    let trackers = spawner.await.unwrap();
+    errs.await.unwrap();
+
+    let counts = trackers
+        .into_iter()
+        .fold(DisplayTrackers::new(), |accum, it| it.accum(accum));
+
+    _ = writeln!(
+        std::io::stdout().lock(),
+        "Processed {counts} in {:?}",
+        start.elapsed()
+    );
 }
