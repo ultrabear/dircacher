@@ -18,7 +18,7 @@ Others are welcome to share their own startup times and experience with `dircach
 ### Arch based systems
 
 #### Option 1: Prepackaged
-Go to (the latest release for a prepackaged tarball)[https://github.com/ultrabear/dircacher/releases/latest]
+Go to [the latest release for a prepackaged tarball](https://github.com/ultrabear/dircacher/releases/latest)
 
 #### Option 2: DIY
 1. Run `arch-prepare.sh` to load source files into the `arch-pkg` directory
