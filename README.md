@@ -16,10 +16,11 @@ Others are welcome to share their own startup times and experience with `dircach
 ## Installation
 
 ### Arch based systems
-1. Run `arch-prepare.sh` to load source files into the `arch-pkg` directory\
-1. `cd` into the `arch-pkg` directory\
-1. `makepkg` to build the pacman package\
-1. `pacman -U` to install to your system\
+1. Run `arch-prepare.sh` to load source files into the `arch-pkg` directory
+1. `cd` into the `arch-pkg` directory
+1. `makepkg` to build the pacman package
+1. `pacman -U` to install to your system
+
 An example:
 ```bash
 ./arch-prepare.sh
