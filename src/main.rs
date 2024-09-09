@@ -179,13 +179,20 @@ async fn cache_dir(
     spawner: mpsc::UnboundedSender<(PathBuf, Metadata)>,
     errors: mpsc::Sender<(PathBuf, io::Error)>,
 ) {
+    let send_err = |dir, err| async {
+        errors
+            .send((dir, err))
+            .await
+            .expect("error channel must be open until spawner ends");
+    };
+
     match std::fs::read_dir(&dir) {
         Ok(dirs) => {
             for entry in dirs {
                 let entry = match entry {
                     Ok(e) => e,
                     Err(err) => {
-                        errors.send((dir.clone(), err)).await.unwrap();
+                        send_err(dir.clone(), err).await;
                         continue;
                     }
                 };
@@ -193,7 +200,7 @@ async fn cache_dir(
                 let e_meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(err) => {
-                        errors.send((entry.path(), err)).await.unwrap();
+                        send_err(entry.path(), err).await;
                         continue;
                     }
                 };
@@ -204,13 +211,22 @@ async fn cache_dir(
                     trackers.inc_file();
                 } else if e_meta.is_dir() {
                     trackers.inc_dir();
+
+                    #[cfg(not(unix))]
+                    compile_error!(
+                        "cannot compile, filesystem device ids not supported on this platform"
+                    );
+
+                    #[cfg(unix)]
                     if e_meta.dev() == meta.dev() {
-                        spawner.send((entry.path(), e_meta)).unwrap();
+                        spawner
+                            .send((entry.path(), e_meta))
+                            .expect("spawner channel must be open until spawner ends");
                     }
                 }
             }
         }
-        Err(e) => errors.send((dir, e)).await.unwrap(),
+        Err(e) => send_err(dir, e).await,
     }
 }
 
@@ -221,10 +237,6 @@ struct Args {
     /// directories to traverse into
     #[arg(num_args = 1..)]
     dirs: Vec<PathBuf>,
-
-    /// wait a number of seconds before starting
-    #[arg(long)]
-    wait: Option<u16>,
 }
 
 #[tokio::main]
@@ -233,19 +245,14 @@ async fn main() {
 
     let parse = Args::parse();
 
-    if let Some(wait) = parse.wait {
-        sleep(Duration::from_secs(wait.into())).await;
-    }
-
-    let main_tracker = TaskSpawner::new(500);
-
-    let (err_tx, mut err_rx) = mpsc::channel::<(PathBuf, io::Error)>(10);
+    let (err_tx, mut err_rx) = mpsc::channel::<(PathBuf, io::Error)>(50);
     let initial_err = err_tx.clone();
 
     let (spawn_tx, mut spawn_rx) = mpsc::unbounded_channel::<(PathBuf, Metadata)>();
     let initial_spawn = spawn_tx.clone();
 
-    let tracker = main_tracker.clone();
+    let tracker = TaskSpawner::new(500);
+    let main_tracker = tracker.clone();
 
     let spawner = tokio::spawn(async move {
         /// The number of statistics objects to be created for atomic load balancing
@@ -308,19 +315,28 @@ async fn main() {
         let meta = match dir.metadata() {
             Ok(m) => m,
             Err(e) => {
-                initial_err.send((dir, e)).await.unwrap();
+                initial_err
+                    .send((dir, e))
+                    .await
+                    .expect("channel cannot be closed until initial_err is");
                 continue;
             }
         };
 
-        initial_spawn.send((dir, meta)).unwrap();
+        initial_spawn
+            .send((dir, meta))
+            .expect("channel cannot be closed until initial_spawn is");
     }
 
     drop((initial_err, initial_spawn));
 
     main_tracker.wait().await;
-    let trackers = spawner.await.unwrap();
-    errs.await.unwrap();
+    // note that spawner must be closed first: it owns err_tx which errs waits on
+    let trackers = spawner
+        .await
+        .expect("no panic should have occurred in this thread");
+    errs.await
+        .expect("no panic should have occurred in this thread");
 
     let counts = trackers
         .into_iter()
