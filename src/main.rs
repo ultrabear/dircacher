@@ -1,14 +1,25 @@
-use core::fmt;
+//! A simple parallel inode caching tool
+
+#![forbid(unsafe_code)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::alloc_instead_of_core, clippy::std_instead_of_alloc)]
+#![warn(missing_docs/*, clippy::missing_docs_in_private_items*/)]
+
+extern crate alloc;
+
+use core::{
+    fmt,
+    future::Future,
+    sync::atomic::{self, AtomicU64},
+};
+
+use alloc::sync::Arc;
+
 use std::{
     fs::Metadata,
-    future::Future,
     io::{self, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
-    sync::{
-        atomic::{self, AtomicU64},
-        Arc,
-    },
     time::Duration,
 };
 
@@ -71,6 +82,7 @@ impl StatsTrackers {
     }
 }
 
+#[derive(Copy, Clone)]
 struct DisplayTrackers {
     file: u64,
     sym: u64,
