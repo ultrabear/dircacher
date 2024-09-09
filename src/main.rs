@@ -2,8 +2,16 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
-#![warn(clippy::alloc_instead_of_core, clippy::std_instead_of_alloc)]
-#![warn(missing_docs, clippy::missing_docs_in_private_items)]
+#![warn(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
+#![warn(
+    missing_docs,
+    clippy::missing_docs_in_private_items,
+    rustdoc::broken_intra_doc_links
+)]
 
 extern crate alloc;
 
@@ -11,6 +19,7 @@ use core::{
     fmt,
     future::Future,
     sync::atomic::{self, AtomicU64},
+    time::Duration,
 };
 
 use alloc::sync::Arc;
@@ -20,7 +29,6 @@ use std::{
     io::{self, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
-    time::Duration,
 };
 
 use clap::Parser;
@@ -39,7 +47,7 @@ struct TaskSpawner {
 }
 
 impl TaskSpawner {
-   /// creates a new `TaskSpawner` with a set limit `lim`
+    /// creates a new `TaskSpawner` with a set limit `lim`
     fn new(lim: usize) -> Self {
         Self {
             lim,
