@@ -262,31 +262,25 @@ async fn main() {
         let mut stats_idx = 0;
 
         loop {
+            let spawn_next = |dir, meta| {
+                tracker.spawn(cache_dir(
+                    dir,
+                    meta,
+                    statspool[stats_idx].clone(),
+                    spawn_tx.clone(),
+                    err_tx.clone(),
+                ))
+            };
+
             if let Ok((dir, meta)) = spawn_rx.try_recv() {
-                tracker
-                    .spawn(cache_dir(
-                        dir,
-                        meta,
-                        statspool[stats_idx].clone(),
-                        spawn_tx.clone(),
-                        err_tx.clone(),
-                    ))
-                    .await;
+                spawn_next(dir, meta).await;
             // the spawner we hold is the only one left
             } else if spawn_rx.sender_strong_count() == 1 {
                 // but its possible that something was added between try_recv and our strong count
                 // check
                 if let Ok((dir, meta)) = spawn_rx.try_recv() {
                     // there was something, keep going
-                    tracker
-                        .spawn(cache_dir(
-                            dir,
-                            meta,
-                            statspool[stats_idx].clone(),
-                            spawn_tx.clone(),
-                            err_tx.clone(),
-                        ))
-                        .await;
+                    spawn_next(dir, meta).await;
                 } else {
                     // there was nothing
                     break;
@@ -332,13 +326,10 @@ async fn main() {
 
     main_tracker.wait().await;
     // note that spawner must be closed first: it owns err_tx which errs waits on
-    let trackers = spawner
-        .await
-        .expect("no panic should have occurred in this thread");
-    errs.await
-        .expect("no panic should have occurred in this thread");
+    let stats = spawner.await.expect("no panic should have occurred");
+    errs.await.expect("no panic should have occurred");
 
-    let counts = trackers
+    let counts = stats
         .into_iter()
         .fold(DisplayStats::new(), |accum, it| it.accum(accum));
 
