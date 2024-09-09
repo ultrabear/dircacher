@@ -29,15 +29,17 @@ use tokio::{sync::mpsc, task, time::sleep};
 use tokio_util::task::{task_tracker::TaskTrackerWaitFuture, TaskTracker};
 
 #[derive(Clone)]
-/// A TaskTracker based spawn limiter, only lim tasks may live at a time when spawned by this
+/// A `TaskTracker` based spawn limiter, only lim tasks may live at a time when spawned by this
 /// object
 struct TaskSpawner {
+    /// The most amount of tasks that can be alive at once
     lim: usize,
+    /// task tracking primitive
     track: TaskTracker,
 }
 
 impl TaskSpawner {
-    /// creates a new TaskSpawner with a set limit `lim`
+   /// creates a new `TaskSpawner` with a set limit `lim`
     fn new(lim: usize) -> Self {
         Self {
             lim,
@@ -68,13 +70,19 @@ impl TaskSpawner {
     }
 }
 
+/// An atomic structure that tracks file/sym/dir counts during inode traversal
+#[derive(Debug)]
 struct Stats {
+    /// file count
     file: CachePadded<AtomicU64>,
+    /// symlink count
     sym: CachePadded<AtomicU64>,
+    /// directory count
     dir: CachePadded<AtomicU64>,
 }
 
 impl Stats {
+    /// Creates a new stat tracker
     const fn new() -> Self {
         Self {
             file: CachePadded::new(AtomicU64::new(0)),
@@ -83,20 +91,23 @@ impl Stats {
         }
     }
 
+    /// increments file counter
     fn inc_file(&self) {
         self.file.fetch_add(1, atomic::Ordering::Relaxed);
     }
 
+    /// increments symlink counter
     fn inc_sym(&self) {
         self.sym.fetch_add(1, atomic::Ordering::Relaxed);
     }
 
+    /// increments directory counter
     fn inc_dir(&self) {
         self.dir.fetch_add(1, atomic::Ordering::Relaxed);
     }
 
     /// splits the atom
-    /// accumulates file, sym, dir counts
+    /// accumulates file, sym, dir counts into a `DisplayStats`
     fn accum(&self, values: DisplayStats) -> DisplayStats {
         DisplayStats {
             file: values.file + self.file.load(atomic::Ordering::Relaxed),
@@ -107,13 +118,18 @@ impl Stats {
 }
 
 #[derive(Copy, Clone)]
+/// Non atomic structure to display accumulated statistics
 struct DisplayStats {
+    /// file count
     file: u64,
+    /// symlink count
     sym: u64,
+    /// directory count
     dir: u64,
 }
 
 impl DisplayStats {
+    /// Create a new `DisplayStats` instance
     const fn new() -> Self {
         Self {
             file: 0,
@@ -144,6 +160,10 @@ impl fmt::Display for DisplayStats {
     }
 }
 
+/// Caches the provided directory with accompanying metadata.
+///
+/// Increments statistics and sends any found directories to the spawner channel.
+/// Any errors encountered are sent to the errors channel.
 async fn cache_dir(
     dir: PathBuf,
     meta: Metadata,
@@ -209,7 +229,7 @@ async fn main() {
         sleep(Duration::from_secs(wait.into())).await;
     }
 
-    let mtracker = TaskSpawner::new(500);
+    let main_tracker = TaskSpawner::new(500);
 
     let (err_tx, mut err_rx) = mpsc::channel::<(PathBuf, io::Error)>(10);
     let initial_err = err_tx.clone();
@@ -217,13 +237,14 @@ async fn main() {
     let (spawn_tx, mut spawn_rx) = mpsc::unbounded_channel::<(PathBuf, Metadata)>();
     let initial_spawn = spawn_tx.clone();
 
-    let tracker = mtracker.clone();
+    let tracker = main_tracker.clone();
 
     let spawner = tokio::spawn(async move {
-        const TRACKERS: usize = 12;
+        /// The number of statistics objects to be created for atomic load balancing
+        const NUM_STATS: usize = 12;
 
-        let statspool: [Arc<Stats>; TRACKERS] = core::array::from_fn(|_| Arc::new(Stats::new()));
-        let mut tracker_i = 0;
+        let statspool: [Arc<Stats>; NUM_STATS] = core::array::from_fn(|_| Arc::new(Stats::new()));
+        let mut stats_idx = 0;
 
         loop {
             if let Ok((dir, meta)) = spawn_rx.try_recv() {
@@ -231,7 +252,7 @@ async fn main() {
                     .spawn(cache_dir(
                         dir,
                         meta,
-                        statspool[tracker_i].clone(),
+                        statspool[stats_idx].clone(),
                         spawn_tx.clone(),
                         err_tx.clone(),
                     ))
@@ -246,7 +267,7 @@ async fn main() {
                         .spawn(cache_dir(
                             dir,
                             meta,
-                            statspool[tracker_i].clone(),
+                            statspool[stats_idx].clone(),
                             spawn_tx.clone(),
                             err_tx.clone(),
                         ))
@@ -260,8 +281,8 @@ async fn main() {
                 sleep(Duration::from_micros(500)).await;
             }
 
-            tracker_i += 1;
-            tracker_i %= TRACKERS;
+            stats_idx += 1;
+            stats_idx %= NUM_STATS;
         }
 
         tracker.close();
@@ -289,7 +310,7 @@ async fn main() {
 
     drop((initial_err, initial_spawn));
 
-    mtracker.wait().await;
+    main_tracker.wait().await;
     let trackers = spawner.await.unwrap();
     errs.await.unwrap();
 
