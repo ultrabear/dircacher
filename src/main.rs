@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::alloc_instead_of_core, clippy::std_instead_of_alloc)]
-#![warn(missing_docs/*, clippy::missing_docs_in_private_items*/)]
+#![warn(missing_docs, clippy::missing_docs_in_private_items)]
 
 extern crate alloc;
 
@@ -26,31 +26,55 @@ use std::{
 use clap::Parser;
 use crossbeam_utils::CachePadded;
 use tokio::{sync::mpsc, task, time::sleep};
-use tokio_util::task::TaskTracker;
+use tokio_util::task::{task_tracker::TaskTrackerWaitFuture, TaskTracker};
 
 #[derive(Clone)]
-struct TaskSpawner(usize, TaskTracker);
+/// A TaskTracker based spawn limiter, only lim tasks may live at a time when spawned by this
+/// object
+struct TaskSpawner {
+    lim: usize,
+    track: TaskTracker,
+}
 
 impl TaskSpawner {
+    /// creates a new TaskSpawner with a set limit `lim`
+    fn new(lim: usize) -> Self {
+        Self {
+            lim,
+            track: TaskTracker::new(),
+        }
+    }
+
+    /// Spawns a future on this tracker after waiting for the amount of tasks to be less than lim
     async fn spawn<F: Future + Send + 'static>(&self, task: F) -> task::JoinHandle<F::Output>
     where
         F::Output: Send + 'static,
     {
-        while self.1.len() > self.0 {
+        while self.track.len() > self.lim {
             sleep(Duration::from_micros(500)).await;
         }
 
-        self.1.spawn(task)
+        self.track.spawn(task)
+    }
+
+    /// Closes the tracker, no new tasks may be spawned after this point
+    fn close(&self) -> bool {
+        self.track.close()
+    }
+
+    /// Waits for all tasks to be completed and close to be called
+    fn wait(&self) -> TaskTrackerWaitFuture {
+        self.track.wait()
     }
 }
 
-struct StatsTrackers {
+struct Stats {
     file: CachePadded<AtomicU64>,
     sym: CachePadded<AtomicU64>,
     dir: CachePadded<AtomicU64>,
 }
 
-impl StatsTrackers {
+impl Stats {
     const fn new() -> Self {
         Self {
             file: CachePadded::new(AtomicU64::new(0)),
@@ -73,8 +97,8 @@ impl StatsTrackers {
 
     /// splits the atom
     /// accumulates file, sym, dir counts
-    fn accum(&self, values: DisplayTrackers) -> DisplayTrackers {
-        DisplayTrackers {
+    fn accum(&self, values: DisplayStats) -> DisplayStats {
+        DisplayStats {
             file: values.file + self.file.load(atomic::Ordering::Relaxed),
             sym: values.sym + self.sym.load(atomic::Ordering::Relaxed),
             dir: values.dir + self.dir.load(atomic::Ordering::Relaxed),
@@ -83,14 +107,14 @@ impl StatsTrackers {
 }
 
 #[derive(Copy, Clone)]
-struct DisplayTrackers {
+struct DisplayStats {
     file: u64,
     sym: u64,
     dir: u64,
 }
 
-impl DisplayTrackers {
-    fn new() -> Self {
+impl DisplayStats {
+    const fn new() -> Self {
         Self {
             file: 0,
             sym: 0,
@@ -99,7 +123,7 @@ impl DisplayTrackers {
     }
 }
 
-impl fmt::Display for DisplayTrackers {
+impl fmt::Display for DisplayStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} file", self.file)?;
         if self.file != 1 {
@@ -120,10 +144,10 @@ impl fmt::Display for DisplayTrackers {
     }
 }
 
-async fn cache_dir_async(
+async fn cache_dir(
     dir: PathBuf,
     meta: Metadata,
-    trackers: Arc<StatsTrackers>,
+    trackers: Arc<Stats>,
     spawner: mpsc::UnboundedSender<(PathBuf, Metadata)>,
     errors: mpsc::Sender<(PathBuf, io::Error)>,
 ) {
@@ -185,7 +209,7 @@ async fn main() {
         sleep(Duration::from_secs(wait.into())).await;
     }
 
-    let mtracker = TaskSpawner(500, TaskTracker::new());
+    let mtracker = TaskSpawner::new(500);
 
     let (err_tx, mut err_rx) = mpsc::channel::<(PathBuf, io::Error)>(10);
     let initial_err = err_tx.clone();
@@ -198,14 +222,13 @@ async fn main() {
     let spawner = tokio::spawn(async move {
         const TRACKERS: usize = 12;
 
-        let statspool: [Arc<StatsTrackers>; TRACKERS] =
-            core::array::from_fn(|_| Arc::new(StatsTrackers::new()));
+        let statspool: [Arc<Stats>; TRACKERS] = core::array::from_fn(|_| Arc::new(Stats::new()));
         let mut tracker_i = 0;
 
         loop {
             if let Ok((dir, meta)) = spawn_rx.try_recv() {
                 tracker
-                    .spawn(cache_dir_async(
+                    .spawn(cache_dir(
                         dir,
                         meta,
                         statspool[tracker_i].clone(),
@@ -220,7 +243,7 @@ async fn main() {
                 if let Ok((dir, meta)) = spawn_rx.try_recv() {
                     // there was something, keep going
                     tracker
-                        .spawn(cache_dir_async(
+                        .spawn(cache_dir(
                             dir,
                             meta,
                             statspool[tracker_i].clone(),
@@ -241,7 +264,7 @@ async fn main() {
             tracker_i %= TRACKERS;
         }
 
-        tracker.1.close();
+        tracker.close();
 
         statspool
     });
@@ -266,13 +289,13 @@ async fn main() {
 
     drop((initial_err, initial_spawn));
 
-    mtracker.1.wait().await;
+    mtracker.wait().await;
     let trackers = spawner.await.unwrap();
     errs.await.unwrap();
 
     let counts = trackers
         .into_iter()
-        .fold(DisplayTrackers::new(), |accum, it| it.accum(accum));
+        .fold(DisplayStats::new(), |accum, it| it.accum(accum));
 
     _ = writeln!(
         std::io::stdout().lock(),
