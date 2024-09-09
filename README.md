@@ -1,14 +1,17 @@
 # dircacher
 A simple utility to improve system performance by caching inodes, meant to be run on startup.
 
-The basic idea behind dircacher is that a program will first have to check if a file exists before it 
+The basic idea behind `dircacher` is that a program will first have to check if a file exists before it 
 can be opened (whether this is handled by the kernel in a TOCTOU safe manner is irrelevant). And that there 
-exist programs that will not actually open any files but instead read their metadata.\
-All that dircacher does is read every inode on given subfolders, without traversing symlinks or separate filesystems, in a 
+exist programs that will not actually open any files but instead read their metadata.
+
+All that `dircacher` does is read every inode on given subfolders, without traversing symlinks or separate filesystems, in a 
 multithreaded fashion. On a linux system with enough spare RAM, this will store the filesystem tree including metadata in the "fscache", 
-leading to decreased latency when a user is interacting with any part of the filesystem.\
-In my experience, this has made my computer noticeably snappier after a reboot and takes very little time to do its work: 
-my setup of 3 HDD RAID5 array with 1M inodes + 256GB SATA SSD with 2M inodes cached completely in 1m45sec.
+leading to decreased latency when a user is interacting with any part of the filesystem.
+
+In my experience, this has made my computer noticeably snappier after a reboot and takes very little time to do its work;
+3 HDD RAID5 array with 1M inodes + 256GB SATA SSD with 2M inodes cached completely in 1m45sec.\
+Others are welcome to share their own startup times and experience with `dircacher`, perhaps a table could be made
 
 ## Installation
 
