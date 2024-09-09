@@ -1,6 +1,6 @@
 [package]
 name = "dircacher"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 
@@ -14,5 +14,5 @@ overflow-checks = true
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
 crossbeam-utils = "0.8.20"
-tokio = { version = "1.40.0", features = ["full"] }
-tokio-util = { version = "0.7.12", features = ["full"] }
+tokio = { version = "1.40.0", features = ["time", "macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7.12", features = ["rt"] }
