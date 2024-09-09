@@ -1,5 +1,5 @@
 [Unit]
-Description=startup fs metadata caching
+Description=FS inode caching
 After=multi-user.target
 
 [Service]
@@ -9,4 +9,3 @@ RemainAfterExit=true
 
 [Install]
 WantedBy=multi-user.target
-
