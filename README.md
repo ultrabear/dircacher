@@ -16,6 +16,11 @@ Others are welcome to share their own startup times and experience with `dircach
 ## Installation
 
 ### Arch based systems
+
+#### Option 1: Prepackaged
+Go to (the latest release for a prepackaged tarball)[https://github.com/ultrabear/dircacher/releases/latest]
+
+#### Option 2: DIY
 1. Run `arch-prepare.sh` to load source files into the `arch-pkg` directory
 1. `cd` into the `arch-pkg` directory
 1. `makepkg` to build the pacman package
@@ -29,7 +34,7 @@ makepkg
 sudo pacman -U dircacher-bin{VERSION_HERE}.tar.zst
 ```
 
-### Other installations
+### Other distributions
 Repeat arch installation steps and convert the generated arch package to a deb/rpm using a tool. I might add rpm/deb packages at another point
 
 ## Configuration 
