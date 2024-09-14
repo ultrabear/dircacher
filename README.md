@@ -10,7 +10,7 @@ multithreaded fashion. On a linux system with enough spare RAM, this will store 
 leading to decreased latency when a user is interacting with any part of the filesystem.
 
 In my experience, this has made my computer noticeably snappier after a reboot and takes very little time to do its work;
-3 HDD RAID5 array with 1M inodes + 256GB SATA SSD with 2M inodes cached completely in 1m45sec.\
+3 HDD RAID5 array with 1M inodes + 256GB SATA SSD with 2M inodes cached completely in ~1m45sec~ 1m22sec (as of 0.4.0).\
 Others are welcome to share their own startup times and experience with `dircacher`, perhaps a table could be made
 
 ## Installation
