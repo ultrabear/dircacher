@@ -29,6 +29,7 @@ use std::{
     io::{self, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
+    process::ExitCode,
 };
 
 use clap::Parser;
@@ -239,8 +240,7 @@ struct Args {
     dirs: Vec<PathBuf>,
 }
 
-#[tokio::main]
-async fn main() {
+async fn tokio_main() {
     let start = std::time::Instant::now();
 
     let parse = Args::parse();
@@ -338,4 +338,22 @@ async fn main() {
         "Processed {counts} in {:?}",
         start.elapsed()
     );
+}
+
+fn main() -> ExitCode {
+    let mut rt = tokio::runtime::Builder::new_multi_thread();
+    rt.enable_all();
+    // we mostly do io work, we want lots of syscalls on wait
+    rt.worker_threads(64);
+
+    match rt.build() {
+        Ok(rt) => {
+            rt.block_on(tokio_main());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            _ = writeln!(std::io::stderr().lock(), "Error initializing tokio: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
