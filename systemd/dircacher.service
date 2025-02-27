@@ -13,7 +13,7 @@ IOSchedulingClass=idle
 IOSchedulingPriority=7
 
 # Security
-SystemCallFilter=@file-system @basic-io @io-event madvise
+SystemCallFilter=@file-system @basic-io @io-event @signal madvise
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 SecureBits=noroot-locked
 NoNewPrivileges=yes

@@ -1,6 +1,6 @@
 pkgname="dircacher-bin"
 pkgver="0.5.0"
-pkgrel="1"
+pkgrel="2"
 pkgdesc="A basic recursive inode caching tool"
 arch=("x86_64")
 license=("GPL-3.0-or-later")
