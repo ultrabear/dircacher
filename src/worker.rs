@@ -1,3 +1,5 @@
+//! Directory caching worker implementation
+
 use core::{
     fmt,
     future::Future,
@@ -211,6 +213,10 @@ async fn cache_dir(
     }
 }
 
+/// Main entrypoint to cache a list of directories recursively
+///
+/// # Returns
+/// Statistics on amount of read files/symlinks/directories
 pub async fn cache_dirs(dirs: Vec<PathBuf>) -> DisplayStats {
     let (err_tx, mut err_rx) = mpsc::channel::<(PathBuf, io::Error)>(50);
     let initial_err = err_tx.clone();

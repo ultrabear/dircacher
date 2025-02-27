@@ -15,7 +15,11 @@
 
 extern crate alloc;
 
-use std::{io::Write, path::PathBuf, process::ExitCode};
+use std::{
+    io::{self, Read, Write},
+    path::PathBuf,
+    process::ExitCode,
+};
 
 mod worker;
 
@@ -34,10 +38,26 @@ struct Args {
     dir_file: Option<PathBuf>,
 }
 
-async fn tokio_main() {
+/// Main entrypoint for async mode
+async fn tokio_main() -> io::Result<()> {
     let start = std::time::Instant::now();
 
     let mut parse = Args::parse();
+
+    if let Some(file) = parse.dir_file {
+        // exact match to bypass pathlike checks
+        let dirfile = if "-" == file.as_os_str() {
+            let mut s = String::new();
+
+            std::io::stdin().lock().read_to_string(&mut s)?;
+
+            s
+        } else {
+            std::fs::read_to_string(file)?
+        };
+
+        parse.dirs.extend(dirfile.lines().map(PathBuf::from));
+    }
 
     let counts = worker::cache_dirs(parse.dirs).await;
 
@@ -46,6 +66,8 @@ async fn tokio_main() {
         "Processed {counts} in {:?}",
         start.elapsed()
     );
+
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -56,8 +78,18 @@ fn main() -> ExitCode {
 
     match rt.build() {
         Ok(rt) => {
-            rt.block_on(tokio_main());
-            ExitCode::SUCCESS
+            let err = rt.block_on(tokio_main());
+
+            match err {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    _ = writeln!(
+                        std::io::stderr().lock(),
+                        "Error reading directory list: {e}"
+                    );
+                    ExitCode::FAILURE
+                }
+            }
         }
         Err(e) => {
             _ = writeln!(std::io::stderr().lock(), "Error initializing tokio: {e}");
