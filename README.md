@@ -38,9 +38,11 @@ sudo pacman -U dircacher-bin{VERSION_HERE}.tar.zst
 Repeat arch installation steps and convert the generated arch package to a deb/rpm using a tool. I might add rpm/deb packages at another point
 
 ## Configuration 
-A file called `/etc/systemd/system/dircacher.service` should have been created, modify the ExecStart to pass in any mountpoints you wish to cache on startup, and then enable dircacher.service on startup.
+Write newline delimited folder names to `/etc/dircachertab`
 
 For example on a btrfs system that splits home and root into two subvolumes:
-```
-ExecStart=dircacher / /home
+```sh
+$ cat /etc/dircachertab
+/
+/home
 ```

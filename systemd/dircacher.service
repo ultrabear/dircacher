@@ -1,11 +1,31 @@
 [Unit]
 Description=FS inode caching
-After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=dircacher 
-RemainAfterExit=true
+ExecStart=dircacher --dir-file /etc/dircachertab
+
+# Reduce impact on active system
+OOMScoreAdjust=10
+CPUSchedulingPolicy=idle
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+
+# Security
+SystemCallFilter=@file-system @basic-io @io-event madvise
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+SecureBits=noroot-locked
+NoNewPrivileges=yes
+LimitMEMLOCK=0
+LimitFSIZE=0
+
+# Tinfoil hat
+LockPersonality=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
 
 [Install]
 WantedBy=multi-user.target
