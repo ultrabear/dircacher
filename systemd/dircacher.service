@@ -8,7 +8,10 @@ ExecStart=dircacher --dir-file /etc/dircachertab
 # Reduce impact on active system
 OOMScoreAdjust=10
 CPUSchedulingPolicy=idle
-Nice=10
+# no actual effect because of CPUSchedulingPolicy=idle
+# set to aid process monitors
+Nice=19
+# lowest IO priority possible
 IOSchedulingClass=idle
 IOSchedulingPriority=7
 
