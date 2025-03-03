@@ -59,6 +59,12 @@ async fn tokio_main() -> io::Result<()> {
         parse.dirs.extend(dirfile.lines().map(PathBuf::from));
     }
 
+    _ = writeln!(
+        std::io::stdout().lock(),
+        "Descending into the following directories: {:?}",
+        parse.dirs
+    );
+
     let counts = worker::cache_dirs(parse.dirs).await;
 
     _ = writeln!(
