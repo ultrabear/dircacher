@@ -34,6 +34,23 @@ makepkg
 sudo pacman -U dircacher-bin{VERSION_HERE}.tar.zst
 ```
 
+### Nix
+
+Add dircacher as an input, then add it as an overlay to your config:
+
+```nix
+let
+  pkgs = import nixpkgs {
+    overlays = [
+      (import dircacher)
+    ];
+  };
+in
+...
+```
+
+Currently, you must manually enable the systemd service.
+
 ### Other distributions
 Repeat arch installation steps and convert the generated arch package to a deb/rpm using a tool. I might add rpm/deb packages at another point
 

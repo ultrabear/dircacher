@@ -1,2 +1,4 @@
 /target
 arch-pkg/*
+result
+flake.lock
