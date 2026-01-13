@@ -56,7 +56,7 @@ impl TaskSpawner {
     }
 
     /// Waits for all tasks to be completed and close to be called
-    fn wait(&self) -> TaskTrackerWaitFuture {
+    fn wait(&self) -> TaskTrackerWaitFuture<'_> {
         self.track.wait()
     }
 }
