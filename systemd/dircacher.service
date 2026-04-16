@@ -29,6 +29,22 @@ ProtectControlGroups=yes
 ProtectKernelLogs=yes
 RestrictNamespaces=yes
 RestrictRealtime=yes
+ProtectSystem=strict
+PrivateTmp=disconnected
+PrivateDevices=true
+PrivateMounts=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectClock=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=none
+SocketBindDeny=ipv4:tcp
+SocketBindDeny=ipv4:udp
+SocketBindDeny=ipv6:tcp
+SocketBindDeny=ipv6:udp
+SystemCallArchitectures=native
+PrivateNetwork=true
+IPAddressDeny=any
 
 [Install]
 WantedBy=multi-user.target
